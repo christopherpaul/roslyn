@@ -397,7 +397,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 DeclarationModifiers.Volatile |
                 DeclarationModifiers.Fixed |
                 DeclarationModifiers.Unsafe |
-                DeclarationModifiers.Abstract; // filtered out later
+                DeclarationModifiers.Abstract | // filtered out later
+                DeclarationModifiers.Implicit; 
 
             var errorLocation = new SourceLocation(firstIdentifier);
             DeclarationModifiers result = ModifierUtils.MakeAndCheckNontypeMemberModifiers(

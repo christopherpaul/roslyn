@@ -1012,6 +1012,29 @@ namespace Microsoft.CodeAnalysis.CSharp
             return HasImplicitReferenceConversion(source, destination, ref useSiteDiagnostics);
         }
 
+        public bool HasConversionForImplicitParameter(TypeSymbol source, TypeSymbol implicitParameterType, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            Debug.Assert((object)source != null);
+            Debug.Assert((object)implicitParameterType != null);
+
+            if (source.ContainsDynamic())
+            {
+                return false;
+            }
+
+            if (HasIdentityOrImplicitReferenceConversion(source, implicitParameterType, ref useSiteDiagnostics))
+            {
+                return true;
+            }
+
+            if (HasBoxingConversion(source, implicitParameterType, ref useSiteDiagnostics))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         private static bool HasImplicitDynamicConversionFromExpression(TypeSymbol expressionType, TypeSymbol destination)
         {
             // Spec (§6.1.8)

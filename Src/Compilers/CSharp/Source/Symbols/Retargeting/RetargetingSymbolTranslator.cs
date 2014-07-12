@@ -914,7 +914,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Retargeting
                                 translator.Retarget(param.Type, RetargetOptions.RetargetPrimitiveTypesByTypeCode),
                                 translator.RetargetModifiers(param.CustomModifiers, out modifiersHaveChanged),
                                 param.IsParams,
-                                param.RefKind));
+                                param.RefKind,
+                                param.IsImplicit));
                     }
 
                     // We will be using this symbol only for the purpose of method signature comparison,
@@ -974,7 +975,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Retargeting
                             Retarget(param.Type, RetargetOptions.RetargetPrimitiveTypesByTypeCode),
                             RetargetModifiers(param.CustomModifiers, out modifiersHaveChanged),
                             param.IsParams,
-                            param.RefKind));
+                            param.RefKind,
+                            param.IsImplicit));
                 }
 
                 var targetProperty = new SignatureOnlyPropertySymbol(

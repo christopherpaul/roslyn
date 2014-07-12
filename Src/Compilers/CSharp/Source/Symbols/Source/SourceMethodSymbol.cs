@@ -42,11 +42,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         // The flags int is used to compact many different bits of information efficiently into a 32
         // bit int.  The layout is currently:
         //
-        // |   |s|r|q|z|y|xxxxxxxxxxxxxxxxxxxxx|wwwww|
+        // |s|r|q|z|y|xxxxxxxxxxxxxxxxxxxxxx|wwwww|
         // 
         // w = method kind.  5 bits.
         //
-        // x = modifiers.  21 bits.
+        // x = modifiers.  22 bits.
         //
         // y = returnsVoid. 1 bit.
         //
@@ -58,18 +58,18 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         //
         // s = isMetadataVirtualLocked. 1 bit.
         //
-        // 2 bits remain for future purposes.
+        // no bits remain for future purposes.
 
         private const int MethodKindOffset = 0;
         private const int DeclarationModifiersOffset = 5;
-        private const int ReturnsVoidOffset = 26;
-        private const int IsExtensionMethodOffset = 27;
-        private const int IsMetadataVirtualIgnoringInterfaceChangesOffset = 28;
-        private const int IsMetadataVirtualOffset = 29;
-        private const int IsMetadataVirtualLockedOffset = 30;
+        private const int ReturnsVoidOffset = 27;
+        private const int IsExtensionMethodOffset = 28;
+        private const int IsMetadataVirtualIgnoringInterfaceChangesOffset = 29;
+        private const int IsMetadataVirtualOffset = 30;
+        private const int IsMetadataVirtualLockedOffset = 31;
 
         private const int MethodKindMask = 0x1F << MethodKindOffset;
-        private const int DeclarationModifiersMask = 0x1FFFFF << DeclarationModifiersOffset;
+        private const int DeclarationModifiersMask = 0x3FFFFF << DeclarationModifiersOffset;
         private const int ReturnsVoidMask = 0x1 << ReturnsVoidOffset;
         private const int IsExtensionMethodMask = 0x1 << IsExtensionMethodOffset;
         private const int IsMetadataVirtualIgnoringInterfaceChangesMask = 0x1 << IsMetadataVirtualIgnoringInterfaceChangesOffset;

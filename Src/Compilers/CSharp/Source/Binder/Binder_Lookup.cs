@@ -1531,5 +1531,199 @@ namespace Microsoft.CodeAnalysis.CSharp
                 AddMemberLookupSymbolsInfoWithoutInheritance(result, baseInterface, options, originalBinder, accessThroughType: type);
             }
         }
+
+        /// <summary>
+        /// Look for any implicit symbols in scope assignable to the given target type.
+        /// </summary>
+        /// <remarks>
+        /// Makes a second attempt if the results are not viable, in order to produce more detailed failure information (symbols and diagnostics).
+        /// </remarks>
+        private void LookupImplicitSymbolsWithFallback(LookupResult result, TypeSymbol targetType, ref HashSet<DiagnosticInfo> useSiteDiagnostics, ConsList<Symbol> basesBeingResolved = null, LookupOptions options = LookupOptions.Default)
+        {
+            Debug.Assert(options.AreValid());
+
+            // don't create diagnosis instances unless lookup fails
+            this.LookupImplicitSymbolsInternal(result, targetType, basesBeingResolved, options, diagnose: false, useSiteDiagnostics: ref useSiteDiagnostics);
+            if (result.Kind != LookupResultKind.Viable && result.Kind != LookupResultKind.Empty)
+            {
+                result.Clear();
+                // retry to get diagnosis
+                this.LookupImplicitSymbolsInternal(result, targetType, basesBeingResolved, options, diagnose: true, useSiteDiagnostics: ref useSiteDiagnostics);
+            }
+
+            Debug.Assert(result.IsMultiViable || result.IsClear || result.Error != null);
+        }
+
+        private void LookupImplicitSymbolsInternal(
+            LookupResult result, TypeSymbol targetType, ConsList<Symbol> basesBeingResolved, LookupOptions options, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            Debug.Assert(result.IsClear);
+            Debug.Assert(options.AreValid());
+
+            for (var scope = this; scope != null && !result.IsMultiViable; scope = scope.Next)
+            {
+                if (!result.IsClear)
+                {
+                    var tmp = LookupResult.GetInstance();
+                    scope.LookupImplicitSymbolsInSingleBinder(tmp, targetType, basesBeingResolved, options, this, diagnose, ref useSiteDiagnostics);
+                    result.MergeEqual(tmp);
+                    tmp.Free();
+                }
+                else
+                {
+                    scope.LookupImplicitSymbolsInSingleBinder(result, targetType, basesBeingResolved, options, this, diagnose, ref useSiteDiagnostics);
+                }
+            }
+        }
+
+        protected virtual void LookupImplicitSymbolsInSingleBinder(
+            LookupResult result, TypeSymbol targetType, ConsList<Symbol> basesBeingResolved, LookupOptions options, Binder originalBinder, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+        }
+
+        protected void LookupImplicitMembersInternal(LookupResult result, NamespaceOrTypeSymbol nsOrType, TypeSymbol targetType, ConsList<Symbol> basesBeingResolved, LookupOptions options, Binder originalBinder, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            Debug.Assert(options.AreValid());
+
+            if (nsOrType.IsNamespace)
+            {
+                // Nothing in a namespace that can be accessed by an unqualified name is suitable as a method argument
+                //TODO: picking out implicit symbols from static classes - would that be done here?
+            }
+            else
+            {
+                this.LookupImplicitMembersInType(result, (TypeSymbol)nsOrType, targetType, basesBeingResolved, options, originalBinder, diagnose, ref useSiteDiagnostics);
+            }
+        }
+
+        // Looks up an implicit member with a given (return) type in a particular containing type.
+        protected void LookupImplicitMembersInType(LookupResult result, TypeSymbol containingType, TypeSymbol targetType, ConsList<Symbol> basesBeingResolved, LookupOptions options, Binder originalBinder, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            switch (containingType.TypeKind)
+            {
+                case TypeKind.TypeParameter:
+                case TypeKind.Interface:
+                case TypeKind.Enum:
+                case TypeKind.Delegate:
+                case TypeKind.ArrayType:
+                case TypeKind.DynamicType:
+                case TypeKind.PointerType:
+                    // Would not expect an implicit lookup to be looking at these kinds of type
+                    Debug.Fail("Why are we looking for implicit symbols in a type of kind " + containingType.TypeKind + "?");
+                    result.Clear();
+                    break;
+
+                case TypeKind.Class:
+                case TypeKind.Struct:
+                    this.LookupImplicitMembersInClass(result, containingType, targetType, basesBeingResolved, options, originalBinder, diagnose, ref useSiteDiagnostics);
+                    break;
+
+                case TypeKind.Submission:
+                    //TODO: implicit lookup in submissions
+                    //this.LookupImplicitMembersInSubmissions(result, containingType, targetType, basesBeingResolved, options, originalBinder, diagnose, ref useSiteDiagnostics);
+                    break;
+
+                case TypeKind.Error:
+                    //TODO: not sure what this represents...clear the results for now
+                    result.Clear();
+                    break;
+
+                case TypeKind.Unknown:
+                default:
+                    throw ExceptionUtilities.UnexpectedValue(containingType.TypeKind);
+            }
+        }
+
+        // Lookup member in a class, struct, enum, delegate.
+        private void LookupImplicitMembersInClass(
+            LookupResult result,
+            TypeSymbol containingType,
+            TypeSymbol targetType,
+            ConsList<Symbol> basesBeingResolved,
+            LookupOptions options,
+            Binder originalBinder,
+            bool diagnose,
+            ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            Debug.Assert((object)containingType != null);
+            Debug.Assert(!containingType.IsInterfaceType() && containingType.TypeKind != TypeKind.TypeParameter);
+
+            TypeSymbol currentType = containingType;
+
+            var tmp = LookupResult.GetInstance();
+            PooledHashSet<NamedTypeSymbol> visited = null;
+            while ((object)currentType != null)
+            {
+                tmp.Clear();
+                LookupImplicitMembersWithoutInheritance(tmp, currentType, targetType, options, originalBinder, containingType, diagnose, ref useSiteDiagnostics, basesBeingResolved);
+
+                MergeHidingLookupResults(result, tmp, ref useSiteDiagnostics);
+
+                // If the type is from a winmd and implements any of the special WinRT collection
+                // projections then we may need to add underlying interface members. 
+                //TODO: don't know about WinRT stuff
+                //NamedTypeSymbol namedType = currentType as NamedTypeSymbol;
+                //if ((object)namedType != null && namedType.ShouldAddWinRTMembers)
+                //{
+                //    AddWinRTMembers(result, namedType, name, arity, options, originalBinder, diagnose, ref useSiteDiagnostics);
+                //}
+
+                if (basesBeingResolved != null && basesBeingResolved.ContainsReference(containingType.OriginalDefinition))
+                {
+                    var other = GetNearestOtherSymbol(basesBeingResolved, containingType);
+                    var diagInfo = new CSDiagnosticInfo(ErrorCode.ERR_CircularBase, containingType, other);
+                    //TODO: we don't have a name & arity for the ExtendedErrorTypeSymbol...what should we do?
+                    var error = new ExtendedErrorTypeSymbol(this.Compilation, "", 0, diagInfo, unreported: true);
+                    result.SetFrom(LookupResult.Good(error)); // force lookup to be done w/ error symbol as result
+                }
+
+                // As in dev11, we don't consider inherited members within crefs.
+                // CAVEAT: dev11 appears to ignore this rule within parameter types and return types,
+                // so we're checking Cref, rather than Cref and CrefParameterOrReturnType.
+                //TODO: I suspect this is irrelevant for implicit symbols
+                if (originalBinder.InCrefButNotParameterOrReturnType)
+                {
+                    break;
+                }
+
+                currentType = currentType.GetNextBaseTypeNoUseSiteDiagnostics(basesBeingResolved, this.Compilation, ref visited);
+                if ((object)currentType != null)
+                {
+                    ((TypeSymbol)currentType.OriginalDefinition).AddUseSiteDiagnostics(ref useSiteDiagnostics);
+                }
+            }
+
+            if (visited != null)
+            {
+                visited.Free();
+            }
+
+            tmp.Free();
+        }
+
+        // Does an implicit member lookup in a single type, without considering inheritance.
+        protected static void LookupImplicitMembersWithoutInheritance(LookupResult result, TypeSymbol type, TypeSymbol targetType,
+            LookupOptions options, Binder originalBinder, TypeSymbol accessThroughType, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics, ConsList<Symbol> basesBeingResolved = null)
+        {
+            var members = type.GetMembersUnordered();
+
+            foreach (Symbol member in members)
+            {
+                if (member.IsImplicit)
+                {
+                    TypeSymbol memberType = member.GetTypeOrReturnType();
+                    Conversions conversions = originalBinder.Conversions;
+                    bool typeMatches = conversions.HasConversionForImplicitParameter(memberType, targetType, ref useSiteDiagnostics);
+
+                    if (typeMatches)
+                    {
+                        if (originalBinder.IsAccessible(member, ref useSiteDiagnostics, accessThroughType, basesBeingResolved))
+                        {
+                            result.MergeEqual(LookupResult.Good(member));
+                        }
+                    }
+                }
+            }
+        }
     }
 }

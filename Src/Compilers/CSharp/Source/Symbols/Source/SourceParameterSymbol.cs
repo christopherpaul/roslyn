@@ -36,6 +36,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             int ordinal,
             bool isParams,
             bool isExtensionMethodThis,
+            bool isImplicit,
             DiagnosticBag diagnostics)
         {
             var name = identifier.ValueText;
@@ -77,6 +78,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                                             ConstantValue.Unset,
                                             isParams,
                                             isExtensionMethodThis,
+                                            isImplicit,
                                             diagnostics);
                         }
                     }
@@ -86,6 +88,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 !isExtensionMethodThis &&
                 (syntax.Default == null) &&
                 (syntax.AttributeLists.Count == 0) &&
+                !isImplicit &&
                 !owner.IsPartialMethod())
             {
                 return new SourceSimpleParameterSymbol(owner, parameterType, ordinal, refKind, name, locations);
@@ -103,7 +106,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 syntax.GetReference(),
                 ConstantValue.Unset,
                 isParams,
-                isExtensionMethodThis);
+                isExtensionMethodThis,
+                isImplicit);
         }
 
         protected SourceParameterSymbol(
@@ -143,7 +147,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 this.SyntaxReference,
                 this.ExplicitDefaultConstantValue,
                 newIsParams,
-                this.IsExtensionMethodThis);
+                this.IsExtensionMethodThis,
+                this.IsImplicit);
         }
 
         internal sealed override bool RequiresCompletion

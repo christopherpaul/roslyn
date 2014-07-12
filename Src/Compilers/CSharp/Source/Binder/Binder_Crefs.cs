@@ -892,7 +892,7 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 TypeSymbol type = BindCrefParameterOrReturnType(parameter.Type, (MemberCrefSyntax)parameterListSyntax.Parent, diagnostics);
 
-                parameterBuilder.Add(new SignatureOnlyParameterSymbol(type, ImmutableArray<CustomModifier>.Empty, isParams: false, refKind: refKind));
+                parameterBuilder.Add(new SignatureOnlyParameterSymbol(type, ImmutableArray<CustomModifier>.Empty, isParams: false, refKind: refKind, isImplicit: false /*TODO*/));
             }
 
             return parameterBuilder.ToImmutableAndFree();

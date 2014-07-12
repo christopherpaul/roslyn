@@ -35,9 +35,10 @@ namespace Microsoft.CodeAnalysis.CSharp
         PrimaryCtor = 1 << 18, // not a real modifier, but used to record that this is a primary constructor. Sharing this bit with Indexer.
 
         Async = 1 << 19,
+        Implicit = 1 << 20,
 
-        All = (Async | (Async - 1)), // all modifiers
-        Unset = 1 << 20, // used when a modifiers value hasn't yet been computed
+        All = (Implicit | (Implicit - 1)), // all modifiers
+        Unset = 1 << 21, // used when a modifiers value hasn't yet been computed
 
         AccessibilityMask = Private | Protected | Internal | ProtectedInternal | Public,
     }

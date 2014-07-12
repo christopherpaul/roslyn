@@ -18,17 +18,20 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         private readonly ImmutableArray<CustomModifier> customModifiers;
         private readonly bool isParams;
         private readonly RefKind refKind;
+        private readonly bool isImplicit;
 
         public SignatureOnlyParameterSymbol(
             TypeSymbol type,
             ImmutableArray<CustomModifier> customModifiers,
             bool isParams,
-            RefKind refKind)
+            RefKind refKind,
+            bool isImplicit)
         {
             this.type = type;
             this.customModifiers = customModifiers;
             this.isParams = isParams;
             this.refKind = refKind;
+            this.isImplicit = isImplicit;
         }
 
         public override TypeSymbol Type { get { return type; } }
@@ -36,6 +39,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         public override ImmutableArray<CustomModifier> CustomModifiers { get { return customModifiers; } }
 
         public override bool IsParams { get { return isParams; } }
+
+        internal override bool IsImplicit { get { return isImplicit; } }
 
         public override RefKind RefKind { get { return refKind; } }
 

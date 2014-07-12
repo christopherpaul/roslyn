@@ -77,6 +77,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get { return false; }
         }
 
+        internal override bool IsImplicit
+        {
+            get { return false; }
+        }
+
         internal override bool IsIDispatchConstant
         {
             get { return false; }

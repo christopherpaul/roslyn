@@ -623,6 +623,15 @@ namespace Microsoft.CodeAnalysis.CSharp
         }
 
         /// <summary>
+        /// True if declared with the "implicit" modifier (except implicit conversion operators), making it a candidate argument for implicit
+        /// parameters in method calls.
+        /// </summary>
+        internal virtual bool IsImplicit
+        {
+            get { return false; }
+        }
+
+        /// <summary>
         /// <see cref="CharSet"/> effective for this symbol (type or DllImport method).
         /// Nothing if <see cref="DefaultCharSetAttribute"/> isn't applied on the containing module or it doesn't apply on this symbol.
         /// </summary>

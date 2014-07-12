@@ -1295,7 +1295,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             return Next.BindRangeVariable(node, qv, diagnostics);
         }
 
-        private BoundExpression SynthesizeReceiver(SimpleNameSyntax node, Symbol member, DiagnosticBag diagnostics)
+        private BoundExpression SynthesizeReceiver(CSharpSyntaxNode node, Symbol member, DiagnosticBag diagnostics)
         {
             // SPEC: Otherwise, if T is the instance type of the immediately enclosing class or
             // struct type, if the lookup identifies an instance member, and if the reference occurs
@@ -1806,7 +1806,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             CSharpSyntaxNode node,
             CSharpSyntaxNode expression,
             string methodName,
-            BoundExpression boundExpression,
+            BoundExpression boundExpression, // the expression for the method/delegate being invoked
             AnalyzedArguments analyzedArguments,
             DiagnosticBag diagnostics,
             CSharpSyntaxNode queryClause = null)
@@ -2346,13 +2346,120 @@ namespace Microsoft.CodeAnalysis.CSharp
             // Otherwise, there were no dynamic arguments and overload resolution found a unique best candidate. 
             // We still have to determine if it passes final validation.
 
-            var methodResult = result.ValidResult;
-            var returnType = methodResult.Member.ReturnType;
-            this.CoerceArguments(methodResult, analyzedArguments.Arguments, diagnostics);
+            bool gotError = false;
 
+            var methodResult = result.ValidResult;
             var method = methodResult.Member;
+            var returnType = method.ReturnType;
             var expanded = methodResult.Result.Kind == MemberResolutionKind.ApplicableInExpandedForm;
             var argsToParams = methodResult.Result.ArgsToParamsOpt;
+
+            // Search for arguments for any implicit parameters
+            //TODO: refactor this into a method
+            var methodParameters = methodResult.LeastOverriddenMember.Parameters;
+            ArrayBuilder<BoundExpression> implicitArgumentBuilder = null;
+            ArrayBuilder<int> implicitArgToParamsBuilder = null;
+            for (int p = methodParameters.Length - 1; p >= 0; p--)
+            {
+                ParameterSymbol parameter = method.Parameters[p];
+                if (parameter.IsImplicit)
+                {
+                    if (argsToParams.IsDefault ? analyzedArguments.Arguments.Count <= p : !argsToParams.Contains(p))
+                    {
+                        // No argument provided for this implicit parameter
+                        LookupResult implicitParamLookupResult = LookupResult.GetInstance();
+                        TypeSymbol implicitParamType = parameter.Type;
+                        HashSet<DiagnosticInfo> useSiteDiagnostics = null;
+                        LookupImplicitSymbolsWithFallback(implicitParamLookupResult, implicitParamType, ref useSiteDiagnostics);
+
+                        BoundExpression boundImplicitArgument = null;
+                        if (implicitParamLookupResult.IsSingleViable)
+                        {
+                            Symbol implicitArgumentSymbol = implicitParamLookupResult.SingleSymbolOrDefault;
+
+                            switch (implicitArgumentSymbol.Kind)
+                            {
+                                case SymbolKind.Local:
+                                    {
+                                        var localSymbol = (LocalSymbol)implicitArgumentSymbol;
+                                        boundImplicitArgument = new BoundLocal(expression, localSymbol, constantValueOpt: null, type: localSymbol.Type);
+                                    }
+                                    break;
+
+                                case SymbolKind.Parameter:
+                                    {
+                                        var parameterSymbol = (ParameterSymbol)implicitArgumentSymbol;
+                                        boundImplicitArgument = new BoundParameter(expression, parameterSymbol);
+                                    }
+                                    break;
+
+                                case SymbolKind.Field:
+                                    {
+                                        var fieldSymbol = (FieldSymbol)implicitArgumentSymbol;
+                                        BoundExpression implicitArgumentReceiver = SynthesizeReceiver(expression, fieldSymbol, diagnostics);
+                                        boundImplicitArgument = BindFieldAccess(expression, implicitArgumentReceiver, fieldSymbol, diagnostics, LookupResultKind.Viable, hasErrors: false);
+                                    }
+                                    break;
+
+                                default:
+                                    Debug.Fail("Implicit symbol search returned an unexpected symbol kind");
+                                    throw ExceptionUtilities.Unreachable;
+                            }
+
+                            boundImplicitArgument.WasCompilerGenerated = true; // avoids being treated as the semantic value for the whole invocation expression
+                        }
+                        else if (implicitParamLookupResult.IsMultiViable || !parameter.HasExplicitDefaultValue)
+                        {
+                            boundImplicitArgument = new BoundBadExpression(
+                                expression,
+                                implicitParamLookupResult.Kind,
+                                implicitParamLookupResult.Symbols.ToImmutableArray(),
+                                ImmutableArray<BoundNode>.Empty,
+                                implicitParamType,
+                                hasErrors: true);
+                            boundImplicitArgument.WasCompilerGenerated = true;
+                            Error(
+                                diagnostics,
+                                implicitParamLookupResult.IsMultiViable
+                                    ? ErrorCode.ERR_AmbiguousImplicitParameterArgument
+                                    : ErrorCode.ERR_NoSuitableImplicitArgumentInScope,
+                                expression,
+                                parameter.Name,
+                                methodName);
+                            gotError = true;
+                        }
+
+                        if (boundImplicitArgument != null)
+                        {
+                            useSiteDiagnostics = null;
+                            Conversion conversion = Conversions.ClassifyImplicitConversionFromExpression(boundImplicitArgument, implicitParamType, ref useSiteDiagnostics);
+                            if (!conversion.IsIdentity)
+                            {
+                                Debug.Assert(conversion.Kind == ConversionKind.ImplicitReference || conversion.Kind == ConversionKind.Boxing, "Implicit parameter arguments should only require boxing or implicit reference conversion");
+                                boundImplicitArgument = CreateConversion(boundImplicitArgument, conversion, implicitParamType, diagnostics);
+                            }
+
+                            if (implicitArgumentBuilder == null)
+                            {
+                                implicitArgumentBuilder = ArrayBuilder<BoundExpression>.GetInstance(p);
+                                implicitArgToParamsBuilder = ArrayBuilder<int>.GetInstance(p);
+                            }
+
+                            implicitArgumentBuilder.Add(boundImplicitArgument);
+                            implicitArgToParamsBuilder.Add(p);
+                        }
+
+                        implicitParamLookupResult.Free();
+                    }
+                }
+                else if (!(parameter.IsParams || parameter.IsOptional))
+                {
+                    // Optional/implicit/params parameters cannot precede non-optional/implicit/params parameters so we can duck out early
+                    break;
+                }
+            }
+
+            this.CoerceArguments(methodResult, analyzedArguments.Arguments, diagnostics);
 
             // It is possible that overload resolution succeeded, but we have chosen an
             // instance method and we're in a static method. A careful reading of the
@@ -2367,39 +2474,111 @@ namespace Microsoft.CodeAnalysis.CSharp
             // so we're calling MethodGroupFinalValidation directly, rather than via MethodGroupConversionHasErrors.
             // Note: final validation wants the receiver that corresponds to the source representation
             // (i.e. the first argument, if invokedAsExtensionMethod).
-            var gotError = MemberGroupFinalValidation(receiver, method, expression, diagnostics, invokedAsExtensionMethod);
+            var gotErrorFromFinalValidation = MemberGroupFinalValidation(receiver, method, expression, diagnostics, invokedAsExtensionMethod);
+            gotError |= gotErrorFromFinalValidation;
 
-            // Skip building up a new array if the first argument doesn't have to be modified.
+            // If the receiver has to be modified, we need to create a new array of arguments. We also have to
+            // do this if there are any implicit arguments, as we need to add them to the list. In this case we
+            // also have to make sure that the arrays of names and RefKinds, if they exist, are extended so that
+            // all the lengths match, and that the argsToParams map is augmented with the implicit argument
+            // mappings.
+            bool receiverConversionRequired = invokedAsExtensionMethod && !ReferenceEquals(receiver, methodGroup.Receiver);
             ImmutableArray<BoundExpression> args;
-            if (invokedAsExtensionMethod && !ReferenceEquals(receiver, methodGroup.Receiver))
+            ImmutableArray<string> argNames;
+            ImmutableArray<RefKind> argRefKinds;
+            if (receiverConversionRequired || implicitArgumentBuilder != null)
             {
                 ArrayBuilder<BoundExpression> builder = ArrayBuilder<BoundExpression>.GetInstance();
 
-                // Because the receiver didn't pass through CoerceArguments, we need to apply an appropriate
-                // conversion here.
-                Debug.Assert(method.ParameterCount > 0);
-                Debug.Assert(argsToParams.IsDefault || argsToParams[0] == 0);
-                BoundExpression convertedReceiver = CreateConversion(receiver, methodResult.Result.ConversionForArg(0), method.Parameters[0].Type, diagnostics);
-                builder.Add(convertedReceiver);
+                if (receiverConversionRequired)
+                {
+                    // Because the receiver didn't pass through CoerceArguments, we need to apply an appropriate
+                    // conversion here.
+                    Debug.Assert(method.ParameterCount > 0);
+                    Debug.Assert(argsToParams.IsDefault || argsToParams[0] == 0);
+                    BoundExpression convertedReceiver = CreateConversion(receiver, methodResult.Result.ConversionForArg(0), method.Parameters[0].Type, diagnostics);
+                    builder.Add(convertedReceiver);
+                }
 
-                bool first = true;
+                bool skip = receiverConversionRequired;
                 foreach (BoundExpression arg in analyzedArguments.Arguments)
                 {
-                    if (first)
+                    if (skip)
                     {
                         // Skip the first argument (the receiver), since we added our own.
-                        first = false;
+                        skip = false;
                     }
                     else
                     {
                         builder.Add(arg);
                     }
                 }
+
+                if (implicitArgumentBuilder != null)
+                {
+                    int numImplicitArguments = implicitArgumentBuilder.Count;
+
+                    builder.AddRange(implicitArgumentBuilder);
+
+                    var argsToParamsRebuilder = ArrayBuilder<int>.GetInstance(builder.Count);
+                    if (argsToParams.IsDefault)
+                    {
+                        for (int i = 0; i < analyzedArguments.Arguments.Count; i++)
+                        {
+                            argsToParamsRebuilder.Add(i);
+                        }
+                    }
+                    else
+                    {
+                        argsToParamsRebuilder.AddRange(argsToParams);
+                    }
+
+                    argsToParamsRebuilder.AddRange(implicitArgToParamsBuilder);
+
+                    argsToParams = argsToParamsRebuilder.ToImmutableAndFree();
+
+                    implicitArgumentBuilder.Free();
+                    implicitArgToParamsBuilder.Free();
+
+                    var normalNames = analyzedArguments.GetNames();
+                    if (!normalNames.IsDefault)
+                    {
+                        var namesBuilder = ArrayBuilder<string>.GetInstance(builder.Count);
+                        namesBuilder.AddRange(normalNames);
+                        namesBuilder.AddMany(null, numImplicitArguments);
+                        argNames = namesBuilder.ToImmutableAndFree();
+                    }
+                    else
+                    {
+                        argNames = normalNames;
+                    }
+
+                    var normalRefKinds = analyzedArguments.RefKinds;
+                    if (normalRefKinds.Count > 0)
+                    {
+                        var refKindsBuilder = ArrayBuilder<RefKind>.GetInstance(builder.Count);
+                        refKindsBuilder.AddRange(normalRefKinds);
+                        refKindsBuilder.AddMany(RefKind.None, numImplicitArguments);
+                        argRefKinds = refKindsBuilder.ToImmutableAndFree();
+                    }
+                    else
+                    {
+                        argRefKinds = default(ImmutableArray<RefKind>);
+                    }
+                }
+                else
+                {
+                    argNames = analyzedArguments.GetNames();
+                    argRefKinds = analyzedArguments.RefKinds.ToImmutableOrNull();
+                }
+
                 args = builder.ToImmutableAndFree();
             }
             else
             {
                 args = analyzedArguments.Arguments.ToImmutable();
+                argNames = analyzedArguments.GetNames();
+                argRefKinds = analyzedArguments.RefKinds.ToImmutableOrNull();
             }
 
             // This will be the receiver of the BoundCall node that we create.
@@ -2410,9 +2589,6 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 receiver = null;
             }
-
-            var argNames = analyzedArguments.GetNames();
-            var argRefKinds = analyzedArguments.RefKinds.ToImmutableOrNull();
 
             if (!gotError && !method.IsStatic && receiver != null && receiver.Kind == BoundKind.ThisReference && receiver.WasCompilerGenerated)
             {

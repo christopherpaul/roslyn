@@ -1283,6 +1283,10 @@ namespace Microsoft.CodeAnalysis.CSharp
 
         ERR_InitializerInStructWithoutExplicitConstructor = 8040,
 
+        //TODO: added for prototype implicit parameters feature
+        ERR_AmbiguousImplicitParameterArgument = 8101,
+        ERR_NoSuitableImplicitArgumentInScope = 8102,
+
         // Values in the range 10000-14000 are used for "Code Analysis" issues previously reported by FXCop
         WRN_CA2000_DisposeObjectsBeforeLosingScope1 = 10000,
         WRN_CA2000_DisposeObjectsBeforeLosingScope2 = 10001,

@@ -27,8 +27,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             ConstantValue defaultSyntaxValue,
             bool isParams,
             bool isExtensionMethodThis,
+            bool isImplicit,
             DiagnosticBag diagnostics
-        ) : base(owner, ordinal, parameterType, refKind, ImmutableArray<CustomModifier>.Empty, false, name, locations, syntax.GetReference(), defaultSyntaxValue, isParams, isExtensionMethodThis)
+        ) : base(owner, ordinal, parameterType, refKind, ImmutableArray<CustomModifier>.Empty, false, name, locations, syntax.GetReference(), defaultSyntaxValue, isParams, isExtensionMethodThis, isImplicit)
         {
             bool modifierErrors;
             var modifiers = SourceMemberFieldSymbol.MakeModifiers(owner.ContainingType, syntax.Identifier, syntax.Modifiers, diagnostics, out modifierErrors, ignoreParameterModifiers: true);

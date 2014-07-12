@@ -28,6 +28,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         private readonly EqualsValueClauseSyntax initializer; // for regular locals
         private readonly ExpressionSyntax collection; // for "foreach" locals
         private readonly LocalDeclarationKind declarationKind;
+        private readonly bool isImplicit;
         private TypeSymbol type;
 
         /// <summary>
@@ -61,7 +62,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             SyntaxToken identifierToken,
             ExpressionSyntax collection)
         {
-            return new SourceLocalSymbol(containingMethod, binder, typeSyntax, identifierToken, null, collection, LocalDeclarationKind.ForEach);
+            return new SourceLocalSymbol(containingMethod, binder, typeSyntax, identifierToken, null, collection, LocalDeclarationKind.ForEach, false);
         }
 
         public static SourceLocalSymbol MakeLocal(
@@ -70,10 +71,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             TypeSyntax typeSyntax,
             SyntaxToken identifierToken,
             EqualsValueClauseSyntax initializer,
-            LocalDeclarationKind declarationKind)
+            LocalDeclarationKind declarationKind,
+            bool isImplicit)
         {
             Debug.Assert(declarationKind != LocalDeclarationKind.ForEach);
-            return new SourceLocalSymbol(containingSymbol, binder, typeSyntax, identifierToken, initializer, null, declarationKind);
+            return new SourceLocalSymbol(containingSymbol, binder, typeSyntax, identifierToken, initializer, null, declarationKind, isImplicit);
         }
 
         private SourceLocalSymbol(
@@ -83,7 +85,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             SyntaxToken identifierToken,
             EqualsValueClauseSyntax initializer,
             ExpressionSyntax collection,
-            LocalDeclarationKind declarationKind)
+            LocalDeclarationKind declarationKind,
+            bool isImplicit)
         {
             Debug.Assert(identifierToken.CSharpKind() != SyntaxKind.None);
             Debug.Assert(declarationKind != LocalDeclarationKind.CompilerGenerated);
@@ -95,6 +98,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             this.initializer = initializer;
             this.collection = collection;
             this.declarationKind = declarationKind;
+            this.isImplicit = isImplicit;
 
             // create this eagerly as it will always be needed for the EnsureSingleDefinition
             this.locations = ImmutableArray.Create<Location>(identifierToken.GetLocation());
@@ -171,6 +175,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
                 return this.type;
             }
+        }
+
+        internal override bool IsImplicit
+        {
+            get { return isImplicit; }
         }
 
         public bool IsVarPendingTypeInference

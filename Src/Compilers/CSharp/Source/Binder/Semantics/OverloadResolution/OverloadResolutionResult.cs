@@ -1008,7 +1008,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                         argType,
                         ImmutableArray<CustomModifier>.Empty,
                         isParams: false,
-                        refKind: refArg);
+                        refKind: refArg,
+                        isImplicit: false /*TODO*/);
 
                     SymbolDistinguisher distinguisher = new SymbolDistinguisher(compilation, displayArg, UnwrapIfParamsArray(parameter));
 

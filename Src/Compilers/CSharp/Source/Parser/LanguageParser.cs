@@ -1182,7 +1182,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
             Volatile = 0x1000,
             Unsafe = 0x2000,
             Partial = 0x4000,
-            Async = 0x8000
+            Async = 0x8000,
+            Implicit = 0x10000
         }
 
         private const SyntaxModifier AccessModifiers = SyntaxModifier.Public | SyntaxModifier.Internal | SyntaxModifier.Protected | SyntaxModifier.Private;
@@ -1219,6 +1220,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                     return SyntaxModifier.Volatile;
                 case SyntaxKind.UnsafeKeyword:
                     return SyntaxModifier.Unsafe;
+                case SyntaxKind.ImplicitKeyword:
+                    return SyntaxModifier.Implicit;
                 case SyntaxKind.IdentifierToken:
                     switch (token.ContextualKind)
                     {
@@ -1378,6 +1381,20 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                                 return;
                             }
                         }
+
+                    case SyntaxModifier.Implicit:
+                        {
+                            if (this.PeekToken(1).Kind != SyntaxKind.OperatorKeyword)
+                            {
+                                goto default;
+                            }
+                            else
+                            {
+                                // "implicit operator" means no more modifiers
+                                return;
+                            }
+                        }
+
                     default:
                         {
                             modTok = this.EatToken();
@@ -2306,7 +2323,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
 
                 // Check for conversion operators (implicit/explicit)
                 if (this.CurrentToken.Kind == SyntaxKind.ExplicitKeyword ||
-                    this.CurrentToken.Kind == SyntaxKind.ImplicitKeyword ||
+                    (this.CurrentToken.Kind == SyntaxKind.ImplicitKeyword && this.PeekToken(1).Kind == SyntaxKind.OperatorKeyword) ||
                         (this.CurrentToken.Kind == SyntaxKind.OperatorKeyword && !SyntaxFacts.IsAnyOverloadableOperator(this.PeekToken(1).Kind)))
                 {
                     return this.ParseConversionOperatorDeclaration(attributes, modifiers);
@@ -3729,6 +3746,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                 case SyntaxKind.OutKeyword:
                 case SyntaxKind.ParamsKeyword:
                 case SyntaxKind.ArgListKeyword:
+                case SyntaxKind.ImplicitKeyword:
                     return true;
                 case SyntaxKind.ThisKeyword:
                     return allowThisKeyword;
@@ -3895,6 +3913,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
             Ref = 0x02,
             Out = 0x04,
             Params = 0x08,
+            Implicit = 0x10,
         }
 
         private static ParamFlags GetParamFlags(SyntaxKind kind, bool allowThisKeyword)
@@ -3912,6 +3931,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                     return ParamFlags.Out;
                 case SyntaxKind.ParamsKeyword:
                     return ParamFlags.Params;
+                case SyntaxKind.ImplicitKeyword:
+                    return ParamFlags.Implicit;
                 default:
                     return ParamFlags.None;
             }
@@ -3933,98 +3954,118 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                 if (mod.Kind == SyntaxKind.ThisKeyword ||
                     mod.Kind == SyntaxKind.RefKeyword ||
                     mod.Kind == SyntaxKind.OutKeyword ||
-                    mod.Kind == SyntaxKind.ParamsKeyword)
+                    mod.Kind == SyntaxKind.ParamsKeyword ||
+                    mod.Kind == SyntaxKind.ImplicitKeyword)
                 {
-                    if (mod.Kind == SyntaxKind.ThisKeyword)
-                    {
-                        mod = CheckFeatureAvailability(mod, MessageID.IDS_FeatureExtensionMethod);
+                        if (mod.Kind == SyntaxKind.ThisKeyword)
+                        {
+                            mod = CheckFeatureAvailability(mod, MessageID.IDS_FeatureExtensionMethod);
 
-                        if ((flags & ParamFlags.This) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.ThisKeyword));
+                            if ((flags & ParamFlags.This) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.ThisKeyword));
+                            }
+                            else if ((flags & ParamFlags.Out) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_BadOutWithThis);
+                            }
+                            else if ((flags & ParamFlags.Ref) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_BadRefWithThis);
+                            }
+                            else if ((flags & (ParamFlags.Params | ParamFlags.Implicit)) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_BadParamModThis);
+                            }
+                            else
+                            {
+                                flags |= ParamFlags.This;
+                            }
                         }
-                        else if ((flags & ParamFlags.Out) != 0)
+                        else if (mod.Kind == SyntaxKind.RefKeyword)
                         {
-                            mod = this.AddError(mod, ErrorCode.ERR_BadOutWithThis);
+                            if ((flags & ParamFlags.Ref) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.RefKeyword));
+                            }
+                            else if ((flags & ParamFlags.This) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_BadRefWithThis);
+                            }
+                            else if ((flags & ParamFlags.Params) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_ParamsCantBeRefOut);
+                            }
+                            else if ((flags & (ParamFlags.Out | ParamFlags.Implicit)) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_MultiParamMod);
+                            }
+                            else
+                            {
+                                flags |= ParamFlags.Ref;
+                            }
                         }
-                        else if ((flags & ParamFlags.Ref) != 0)
+                        else if (mod.Kind == SyntaxKind.OutKeyword)
                         {
-                            mod = this.AddError(mod, ErrorCode.ERR_BadRefWithThis);
+                            if ((flags & ParamFlags.Out) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.OutKeyword));
+                            }
+                            else if ((flags & ParamFlags.This) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_BadOutWithThis);
+                            }
+                            else if ((flags & ParamFlags.Params) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_ParamsCantBeRefOut);
+                            }
+                            else if ((flags & (ParamFlags.Ref | ParamFlags.Implicit)) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_MultiParamMod);
+                            }
+                            else
+                            {
+                                flags |= ParamFlags.Out;
+                            }
                         }
-                        else if ((flags & ParamFlags.Params) != 0)
+                        else if (mod.Kind == SyntaxKind.ParamsKeyword)
                         {
-                            mod = this.AddError(mod, ErrorCode.ERR_BadParamModThis);
+                            if ((flags & ParamFlags.Params) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.ParamsKeyword));
+                            }
+                            else if ((flags & ParamFlags.This) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_BadParamModThis);
+                            }
+                            else if ((flags & (ParamFlags.Ref | ParamFlags.Out | ParamFlags.This | ParamFlags.Implicit)) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_MultiParamMod);
+                            }
+                            else
+                            {
+                                flags |= ParamFlags.Params;
+                            }
                         }
-                        else
+                        else if (mod.Kind == SyntaxKind.ImplicitKeyword)
                         {
-                            flags |= ParamFlags.This;
+                            if ((flags & ParamFlags.Implicit) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.ImplicitKeyword));
+                            }
+                            else if ((flags & ParamFlags.This) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_BadParamModThis);
+                            }
+                            else if ((flags & (ParamFlags.Ref | ParamFlags.Out | ParamFlags.Params)) != 0)
+                            {
+                                mod = this.AddError(mod, ErrorCode.ERR_MultiParamMod);
+                            }
+                            else
+                            {
+                                flags |= ParamFlags.Implicit;
+                            }
                         }
-                    }
-                    else if (mod.Kind == SyntaxKind.RefKeyword)
-                    {
-                        if ((flags & ParamFlags.Ref) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.RefKeyword));
-                        }
-                        else if ((flags & ParamFlags.This) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_BadRefWithThis);
-                        }
-                        else if ((flags & ParamFlags.Params) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_ParamsCantBeRefOut);
-                        }
-                        else if ((flags & ParamFlags.Out) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_MultiParamMod);
-                        }
-                        else
-                        {
-                            flags |= ParamFlags.Ref;
-                        }
-                    }
-                    else if (mod.Kind == SyntaxKind.OutKeyword)
-                    {
-                        if ((flags & ParamFlags.Out) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.OutKeyword));
-                        }
-                        else if ((flags & ParamFlags.This) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_BadOutWithThis);
-                        }
-                        else if ((flags & ParamFlags.Params) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_ParamsCantBeRefOut);
-                        }
-                        else if ((flags & ParamFlags.Ref) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_MultiParamMod);
-                        }
-                        else
-                        {
-                            flags |= ParamFlags.Out;
-                        }
-                    }
-                    else if (mod.Kind == SyntaxKind.ParamsKeyword)
-                    {
-                        if ((flags & ParamFlags.Params) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_DupParamMod, SyntaxFacts.GetText(SyntaxKind.ParamsKeyword));
-                        }
-                        else if ((flags & ParamFlags.This) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_BadParamModThis);
-                        }
-                        else if ((flags & (ParamFlags.Ref | ParamFlags.Out | ParamFlags.This)) != 0)
-                        {
-                            mod = this.AddError(mod, ErrorCode.ERR_MultiParamMod);
-                        }
-                        else
-                        {
-                            flags |= ParamFlags.Params;
-                        }
-                    }
                 }
 
                 modifiers.Add(mod);
@@ -6835,6 +6876,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                 case SyntaxKind.StaticKeyword:
                 case SyntaxKind.ReadOnlyKeyword:
                 case SyntaxKind.VolatileKeyword:
+                case SyntaxKind.ImplicitKeyword:
                     return true;
                 case SyntaxKind.IdentifierToken:
                     return IsTrueIdentifier();
@@ -7805,6 +7847,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                 case SyntaxKind.StaticKeyword:
                 case SyntaxKind.ReadOnlyKeyword:
                 case SyntaxKind.VolatileKeyword:
+                case SyntaxKind.ImplicitKeyword:
                     return true;
                 default:
                     return false;

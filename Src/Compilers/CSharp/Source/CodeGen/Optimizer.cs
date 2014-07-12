@@ -1775,6 +1775,11 @@ namespace Microsoft.CodeAnalysis.CSharp.CodeGen
             get { throw new NotImplementedException(); }
         }
 
+        internal override bool IsImplicit
+        {
+            get { throw new NotImplementedException(); }
+        }
+
         public override ImmutableArray<Location> Locations
         {
             get { throw new NotImplementedException(); }

@@ -78,8 +78,10 @@
       <HintPath>..\..\..\packages\Microsoft.CodeAnalysis.Test.Resources.Proprietary.0.6.4033103-beta\lib\net45\Microsoft.CodeAnalysis.Test.Resources.Proprietary.dll</HintPath>
     </Reference>
   </ItemGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' "></PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' "></PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+  </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|ARM' ">
     <PlatformTarget>ARM</PlatformTarget>
   </PropertyGroup>
@@ -172,6 +174,7 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <None Include="ClassDiagram1.cd" />
     <None Include="MetadataReader\CPPClassLibrary2.h" />
     <None Include="Resources\default.win32manifest" />
     <None Include="Resources\nativeWithStringIDsAndTypesAndIntTypes.res" />

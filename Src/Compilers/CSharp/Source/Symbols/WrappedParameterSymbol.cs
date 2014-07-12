@@ -98,6 +98,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get { return underlyingParameter.IsImplicitlyDeclared; }
         }
 
+        internal override bool IsImplicit
+        {
+            get { return underlyingParameter.IsImplicit; }
+        }
+
         public sealed override string Name
         {
             get { return underlyingParameter.Name; }

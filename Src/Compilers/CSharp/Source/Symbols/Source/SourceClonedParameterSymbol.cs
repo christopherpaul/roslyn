@@ -11,7 +11,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
     /// </summary>
     internal sealed class SourceClonedParameterSymbol : SourceParameterSymbolBase
     {
-        // if true suppresses params-array and default value:
+        // if true suppresses params-array and default value and implicit parameters (TODO):
         private readonly bool suppressOptional;
 
         private readonly SourceParameterSymbol originalParam;
@@ -43,6 +43,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         public override bool IsParams
         {
             get { return !suppressOptional && originalParam.IsParams; }
+        }
+
+        internal override bool IsImplicit
+        {
+            get { return !suppressOptional && originalParam.IsImplicit; }
         }
 
         internal override bool IsMetadataOptional

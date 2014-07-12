@@ -173,6 +173,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
 
                 LocalDeclarationKind kind;
+                bool isImplicit = false;
 
                 switch (node.Parent.CSharpKind())
             {
@@ -181,6 +182,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                         kind = localDecl.IsConst ? LocalDeclarationKind.Constant :
                                                   localDecl.IsFixed ? LocalDeclarationKind.Fixed :
                                                                      LocalDeclarationKind.Variable;
+                        isImplicit = localDecl.IsImplicit;
                         break;
 
                     case SyntaxKind.ForStatement:
@@ -207,7 +209,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                         node.Type,
                         vdecl.Identifier,
                         vdecl.Initializer,
-                        kind);
+                        kind,
+                        isImplicit);
                     Locals.Add(localSymbol);
 
                     Visit(vdecl.Initializer);
@@ -227,7 +230,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                     node.Type,
                     node.Variable.Identifier,
                     node.Variable.Initializer,
-                    LocalDeclarationKind.Variable);
+                    LocalDeclarationKind.Variable,
+                    isImplicit: false);
 
                 Locals.Add(localSymbol);
 
@@ -430,6 +434,29 @@ namespace Microsoft.CodeAnalysis.CSharp
                 if (localsMap.TryGetValue(name, out localSymbol))
                 {
                     result.MergeEqual(originalBinder.CheckViability(localSymbol, arity, options, null, diagnose, ref useSiteDiagnostics, basesBeingResolved));
+                }
+            }
+        }
+
+        protected override void LookupImplicitSymbolsInSingleBinder(
+            LookupResult result, TypeSymbol targetType, ConsList<Symbol> basesBeingResolved, LookupOptions options, Binder originalBinder, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            Debug.Assert(options.AreValid());
+            Debug.Assert(result.IsClear);
+
+            var locals = this.Locals;
+            for (int i = 0; i < locals.Length; i++)
+            {
+                LocalSymbol localSymbol = locals[i];
+                if (localSymbol.IsImplicit)
+                {
+                    Conversions conversions = originalBinder.Conversions;
+                    TypeSymbol localSymbolType = localSymbol.Type;
+                    bool typeMatches = conversions.HasConversionForImplicitParameter(localSymbolType, targetType, ref useSiteDiagnostics);
+                    if (typeMatches)
+                    {
+                        result.MergeEqual(LookupResult.Good(localSymbol));
+                    }
                 }
             }
         }

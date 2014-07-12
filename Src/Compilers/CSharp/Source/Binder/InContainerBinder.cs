@@ -204,6 +204,36 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
         }
 
+        protected override void LookupImplicitSymbolsInSingleBinder(
+            LookupResult result, TypeSymbol targetType, ConsList<Symbol> basesBeingResolved, LookupOptions options, Binder originalBinder, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            Debug.Assert(options.AreValid());
+            Debug.Assert(result.IsClear);
+
+            if (container.IsSubmissionClass)
+            {
+                this.LookupImplicitMembersInternal(result, container, targetType, basesBeingResolved, options, originalBinder, diagnose, ref useSiteDiagnostics);
+                return;
+            }
+
+            //var imports = GetImports(basesBeingResolved);
+
+            // first lookup members of the namespace
+            if ((options & LookupOptions.NamespaceAliasesOnly) == 0)
+            {
+                this.LookupImplicitMembersInternal(result, container, targetType, basesBeingResolved, options, originalBinder, diagnose, ref useSiteDiagnostics);
+
+                if (result.IsMultiViable)
+                {
+                    // found something; we're done
+                    return;
+                }
+            }
+
+            // next try using aliases or symbols in imported namespaces
+            //imports.LookupImplicitSymbol(originalBinder, result, targetType, basesBeingResolved, options, diagnose, ref useSiteDiagnostics);
+        }
+
         protected override SourceLocalSymbol LookupLocal(SyntaxToken nameToken)
         {
             return null;

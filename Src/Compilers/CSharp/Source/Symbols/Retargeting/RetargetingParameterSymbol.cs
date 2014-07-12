@@ -185,6 +185,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Retargeting
             get { return underlyingParameter.IsParams; }
         }
 
+        internal override bool IsImplicit
+        {
+            get { return underlyingParameter.IsImplicit; }
+        }
+
         internal override bool IsMetadataOptional
         {
             get { return underlyingParameter.IsMetadataOptional; }

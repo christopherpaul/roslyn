@@ -23,6 +23,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             ParamsParameter = 1,
             ExtensionThisParameter = 2,
             DefaultParameter = 4,
+            ImplicitParameter = 8,
         }
 
         private readonly SyntaxReference syntaxRef;
@@ -46,7 +47,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             SyntaxReference syntaxRef,
             ConstantValue defaultSyntaxValue,
             bool isParams,
-            bool isExtensionMethodThis)
+            bool isExtensionMethodThis,
+            bool isImplicit)
             : base(owner, parameterType, ordinal, refKind, name, locations)
         {
             Debug.Assert((syntaxRef == null) || (syntaxRef.GetSyntax().IsKind(SyntaxKind.Parameter)));
@@ -62,6 +64,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             if (isExtensionMethodThis)
             {
                 this.parameterSyntaxKind |= ParameterSyntaxKind.ExtensionThisParameter;
+            }
+
+            if (isImplicit)
+            {
+                this.parameterSyntaxKind |= ParameterSyntaxKind.ImplicitParameter;
             }
 
             var parameterSyntax = this.CSharpSyntaxNode;
@@ -1028,6 +1035,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get
             {
                 return (this.parameterSyntaxKind & ParameterSyntaxKind.ExtensionThisParameter) != 0;
+            }
+        }
+
+        internal override bool IsImplicit
+        {
+            get
+            {
+                return (this.parameterSyntaxKind & ParameterSyntaxKind.ImplicitParameter) != 0;
             }
         }
 

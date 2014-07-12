@@ -111,6 +111,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     return SyntaxFacts.GetText(SyntaxKind.OverrideKeyword);
                 case DeclarationModifiers.Async:
                     return SyntaxFacts.GetText(SyntaxKind.AsyncKeyword);
+                case DeclarationModifiers.Implicit:
+                    return SyntaxFacts.GetText(SyntaxKind.ImplicitKeyword);
                 default:
                     throw ExceptionUtilities.UnexpectedValue(modifier);
             }
@@ -195,6 +197,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
                     case SyntaxKind.VolatileKeyword:
                         one = DeclarationModifiers.Volatile;
+                        break;
+
+                    case SyntaxKind.ImplicitKeyword:
+                        one = DeclarationModifiers.Implicit;
                         break;
 
                     case SyntaxKind.ThisKeyword:

@@ -42,14 +42,17 @@ namespace Microsoft.CodeAnalysis.CSharp
                 {
                     case SyntaxKind.EventFieldDeclaration:
                     case SyntaxKind.FieldDeclaration:
-                        var modifiers = ((BaseFieldDeclarationSyntax)declarationSyntax.Parent).Modifiers;
-                        GetFirstLocalOrFieldBreakpointSpan(modifiers, declaratorSyntax, out node, out part);
+                        {
+                            var modifiers = ((BaseFieldDeclarationSyntax)declarationSyntax.Parent).Modifiers;
+                            GetFirstLocalOrFieldBreakpointSpan(modifiers, declaratorSyntax, out node, out part);
+                        }
                         break;
 
                     case SyntaxKind.LocalDeclarationStatement:
-                        // only const locals have modifiers and those don't have a sequence point:
-                        Debug.Assert(!((LocalDeclarationStatementSyntax)declarationSyntax.Parent).Modifiers.Any());
-                        GetFirstLocalOrFieldBreakpointSpan(default(SyntaxTokenList), declaratorSyntax, out node, out part);
+                        {
+                            var modifiers = ((LocalDeclarationStatementSyntax)declarationSyntax.Parent).Modifiers;
+                            GetFirstLocalOrFieldBreakpointSpan(modifiers, declaratorSyntax, out node, out part);
+                        }
                         break;
 
                     case SyntaxKind.UsingStatement:

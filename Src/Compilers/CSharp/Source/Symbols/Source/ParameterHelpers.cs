@@ -23,7 +23,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             arglistToken = default(SyntaxToken);
 
             int parameterIndex = 0;
-            int firstDefault = -1;
+            int firstDefaultOrImplicit = -1;
 
             var builder = ArrayBuilder<ParameterSymbol>.GetInstance();
             ImmutableArray<ParameterSymbol> result;
@@ -36,7 +36,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 SyntaxToken refKeyword;
                 SyntaxToken paramsKeyword;
                 SyntaxToken thisKeyword;
-                var refKind = GetModifiers(parameterSyntax.Modifiers, out outKeyword, out refKeyword, out paramsKeyword, out thisKeyword);
+                SyntaxToken implicitKeyword;
+                var refKind = GetModifiers(parameterSyntax.Modifiers, out outKeyword, out refKeyword, out paramsKeyword, out thisKeyword, out implicitKeyword);
 
                 if (parameterSyntax.IsArgList)
                 {
@@ -52,9 +53,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     continue;
                 }
 
-                if (parameterSyntax.Default != null && firstDefault == -1)
+                if ((parameterSyntax.Default != null || implicitKeyword.CSharpKind() != SyntaxKind.None) && firstDefaultOrImplicit == -1)
                 {
-                    firstDefault = parameterIndex;
+                    firstDefaultOrImplicit = parameterIndex;
                 }
 
                 Debug.Assert(parameterSyntax.Type != null);
@@ -79,9 +80,10 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                     parameterIndex,
                     (paramsKeyword.CSharpKind() != SyntaxKind.None),
                     parameterIndex == 0 && thisKeyword.CSharpKind() != SyntaxKind.None,
+                    implicitKeyword.CSharpKind() != SyntaxKind.None,
                     diagnostics);
 
-                ReportParameterErrors(owner, parameterSyntax, parameter, firstDefault, diagnostics);
+                ReportParameterErrors(owner, parameterSyntax, parameter, firstDefaultOrImplicit, diagnostics);
 
                 builder.Add(parameter);
                 ++parameterIndex;
@@ -103,6 +105,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             int parameterIndex = parameter.Ordinal;
             bool isDefault = parameterSyntax.Default != null;
             SyntaxToken thisKeyword = parameterSyntax.Modifiers.FirstOrDefault(SyntaxKind.ThisKeyword);
+            SyntaxToken implicitKeyword = parameterSyntax.Modifiers.FirstOrDefault(SyntaxKind.ImplicitKeyword);
 
             if (thisKeyword.CSharpKind() == SyntaxKind.ThisKeyword && parameterIndex != 0)
             {
@@ -127,7 +130,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 // error CS0721: '{0}': static types cannot be used as parameters
                 diagnostics.Add(ErrorCode.ERR_ParameterIsStaticClass, owner.Locations[0], parameter.Type);
             }
-            else if (firstDefault != -1 && parameterIndex > firstDefault && !isDefault && !parameter.IsParams)
+            else if (firstDefault != -1 && parameterIndex > firstDefault && !isDefault && !parameter.IsParams && implicitKeyword.CSharpKind() != SyntaxKind.ImplicitKeyword)
             {
                 // error CS1737: Optional parameters must appear after all required parameters
                 Location loc = parameterSyntax.Identifier.GetNextToken(includeZeroWidth: true).GetLocation(); //could be missing
@@ -191,7 +194,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             SyntaxToken refKeyword;
             SyntaxToken paramsKeyword;
             SyntaxToken thisKeyword;
-            GetModifiers(parameterSyntax.Modifiers, out outKeyword, out refKeyword, out paramsKeyword, out thisKeyword);
+            SyntaxToken implicitKeyword;
+            GetModifiers(parameterSyntax.Modifiers, out outKeyword, out refKeyword, out paramsKeyword, out thisKeyword, out implicitKeyword);
 
             // CONSIDER: We are inconsistent here regarding where the error is reported; is it
             // CONSIDER: reported on the parameter name, or on the value of the initializer?
@@ -327,7 +331,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             return null;
         }
 
-        private static RefKind GetModifiers(SyntaxTokenList modifiers, out SyntaxToken outKeyword, out SyntaxToken refKeyword, out SyntaxToken paramsKeyword, out SyntaxToken thisKeyword)
+        private static RefKind GetModifiers(SyntaxTokenList modifiers, out SyntaxToken outKeyword, out SyntaxToken refKeyword, out SyntaxToken paramsKeyword, out SyntaxToken thisKeyword, out SyntaxToken implicitKeyword)
         {
             var refKind = RefKind.None;
 
@@ -335,6 +339,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             refKeyword = default(SyntaxToken);
             paramsKeyword = default(SyntaxToken);
             thisKeyword = default(SyntaxToken);
+            implicitKeyword = default(SyntaxToken);
 
             foreach (var modifier in modifiers)
             {
@@ -359,6 +364,9 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                         break;
                     case SyntaxKind.ThisKeyword:
                         thisKeyword = modifier;
+                        break;
+                    case SyntaxKind.ImplicitKeyword:
+                        implicitKeyword = modifier;
                         break;
                 }
             }

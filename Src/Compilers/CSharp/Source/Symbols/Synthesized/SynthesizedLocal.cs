@@ -87,6 +87,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             get { return type; }
         }
 
+        internal override bool IsImplicit
+        {
+            get { return false; }
+        }
+
         public override ImmutableArray<Location> Locations
         {
             get { return (this.syntax == null) ? ImmutableArray<Location>.Empty : ImmutableArray.Create(this.syntax.GetLocation()); }

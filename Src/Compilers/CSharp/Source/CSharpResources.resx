@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (c) Microsoft Open Technologies, Inc.  All Rights Reserved.  Licensed under the Apache License, Version 2.0.  See License.txt in the project root for license information. -->
-
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -3829,5 +3827,11 @@
   </data>
   <data name="ERR_InitializerInStructWithoutExplicitConstructor" xml:space="preserve">
     <value>Structs without explicit constructors cannot contain members with initializers.</value>
+  </data>
+  <data name="ERR_AmbiguousImplicitParameterArgument" xml:space="preserve">
+    <value>The implicit parameter '{0}' of method '{1}' is ambiguous, because there is more than one implicit symbol in scope with a suitable type.</value>
+  </data>
+  <data name="ERR_NoSuitableImplicitArgumentInScope" xml:space="preserve">
+    <value>The implicit parameter '{0}' of method '{1}' cannot be resolved, because there is no implicit symbol in scope with a suitable type.</value>
   </data>
 </root>

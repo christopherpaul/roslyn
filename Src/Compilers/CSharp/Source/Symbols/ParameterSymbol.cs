@@ -115,7 +115,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         /// </summary>
         /// <remarks>
         /// True iff the parameter has a default argument syntax, 
-        /// or the parameter is not a params-array and Optional metadata flag is set.
+        /// or the parameter is not a params-array and Optional metadata flag is set,
+        /// or the parameter is specified as implicit.
         /// </remarks>
         public bool IsOptional
         {
@@ -134,7 +135,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                 //
                 // Also when we call f() where signature of f is void([Optional]params int[] args) 
                 // an empty array is created and passed to f.
-                return !IsParams && IsMetadataOptional;
+                return !IsParams && (IsMetadataOptional || IsImplicit);
             }
         }
 

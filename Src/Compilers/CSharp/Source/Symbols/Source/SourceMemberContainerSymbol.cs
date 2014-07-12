@@ -46,20 +46,20 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
         // The flags int is used to compact many different bits of information efficiently into a 32
         // bit int.  The layout is currently:
         //
-        // |  |d|yy|xxxxxxxxxxxxxxxxxxxxx|wwwwww|
+        // | |d|yy|xxxxxxxxxxxxxxxxxxxxxx|wwwwww|
         //
         // w = special type.  6 bits.
-        // x = modifiers.  21 bits.
+        // x = modifiers.  22 bits.
         // y = IsManagedType.  2 bits.
         // d = FieldDefinitionsNoted. 1 bit
         private const int SpecialTypeMask = 0x3F;
-        private const int DeclarationModifiersMask = 0x1FFFFF;
+        private const int DeclarationModifiersMask = 0x3FFFFF;
         private const int IsManagedTypeMask = 0x3;
 
         private const int SpecialTypeOffset = 0;
         private const int DeclarationModifiersOffset = 6;
-        private const int IsManagedTypeOffset = 26;
-        private const int FieldDefinitionsNotedOffset = 28;
+        private const int IsManagedTypeOffset = 27;
+        private const int FieldDefinitionsNotedOffset = 29;
 
         private int flags;
 

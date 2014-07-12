@@ -236,6 +236,35 @@ namespace Microsoft.CodeAnalysis.CSharp
             }
         }
 
+        protected override void LookupImplicitSymbolsInSingleBinder(
+            LookupResult result, TypeSymbol targetType, ConsList<Symbol> basesBeingResolved, LookupOptions options, Binder originalBinder, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics)
+        {
+            Debug.Assert(options.AreValid());
+            Debug.Assert(result.IsClear);
+
+            if (parameterMap == null)
+            {
+                return;
+            }
+
+            foreach (string name in parameterMap.Keys)
+            {
+                foreach (ParameterSymbol parameter in parameterMap[name])
+                {
+                    if (parameter.IsImplicit)
+                    {
+                        Conversions conversions = originalBinder.Conversions;
+                        TypeSymbol parameterType = parameter.Type;
+                        bool typeMatches = conversions.HasConversionForImplicitParameter(parameterType, targetType, ref useSiteDiagnostics);
+                        if (typeMatches)
+                        {
+                            result.MergeEqual(LookupResult.Good(parameter));
+                        }
+                    }
+                }
+            }
+        }
+
         // Two things can cause a name to have more than one meaning in a scope -
         // 1) declaration of a variable (local, lambda parameter, query variable etc...)
         // 2) use of the simple name in an invocation - when looking up "foo" in foo() we can match a 

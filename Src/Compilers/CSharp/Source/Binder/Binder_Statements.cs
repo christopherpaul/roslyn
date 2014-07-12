@@ -870,7 +870,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 {
                 localSymbol = SourceLocalSymbol.MakeLocal(
                     ContainingMemberOrLambda, this, typeSyntax,
-                    declarator.Identifier, declarator.Initializer, LocalDeclarationKind.Variable);
+                    declarator.Identifier, declarator.Initializer, LocalDeclarationKind.Variable, false);
                 }
 
             return localSymbol;

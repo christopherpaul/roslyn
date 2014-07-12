@@ -296,7 +296,8 @@ namespace Microsoft.CodeAnalysis.CSharp
             // fall back on them if no other candidates were available.
 
             var refKind = parameter.RefKind;
-            return !isMethodGroupConversion && parameter.IsOptional &&
+            return !isMethodGroupConversion && 
+                parameter.IsOptional &&
                 (refKind == RefKind.None ||
                  (refKind == RefKind.Ref && parameter.ContainingSymbol.ContainingType.IsComImport));
         }

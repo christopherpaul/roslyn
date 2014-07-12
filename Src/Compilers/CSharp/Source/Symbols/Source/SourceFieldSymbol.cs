@@ -95,6 +95,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        internal override bool IsImplicit
+        {
+            get
+            {
+                return (Modifiers & DeclarationModifiers.Implicit) != 0;
+            }
+        }
+
         public sealed override Accessibility DeclaredAccessibility
         {
             get

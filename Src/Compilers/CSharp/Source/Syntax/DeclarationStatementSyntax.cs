@@ -22,5 +22,13 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax
                 return this.Modifiers.Any(SyntaxKind.ConstKeyword);
             }
         }
+
+        public bool IsImplicit
+        {
+            get
+            {
+                return this.Modifiers.Any(SyntaxKind.ImplicitKeyword);
+            }
+        }
     }
 }

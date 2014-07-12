@@ -564,6 +564,11 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols.Metadata.PE
             }
         }
 
+        internal override bool IsImplicit
+        {
+            get { return false; /*TODO: work out how to indicate implicit parameters in an assembly*/ }
+        }
+
         public override ImmutableArray<Location> Locations
         {
             get
