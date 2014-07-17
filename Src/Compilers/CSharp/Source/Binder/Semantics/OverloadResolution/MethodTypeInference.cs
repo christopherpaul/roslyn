@@ -82,11 +82,51 @@ namespace Microsoft.CodeAnalysis.CSharp
             Indirect = 0x12
         }
 
+        private enum ParamKind
+        {
+            InValue,
+            OutValue,
+            InOutReference,
+            OutReference
+        }
+
+        private static ParamKind RefKindToParamKind(RefKind refKind)
+        {
+            switch (refKind)
+            {
+                case RefKind.None:
+                    return ParamKind.InValue;
+
+                case RefKind.Ref:
+                    return ParamKind.InOutReference;
+
+                case RefKind.Out:
+                    return ParamKind.OutReference;
+
+                default:
+                    throw ExceptionUtilities.UnexpectedValue(refKind);
+            }
+        }
+
+        private static ImmutableArray<ParamKind> RefKindToParamKindImmutableArray(ImmutableArray<RefKind> refKinds)
+        {
+            if (!refKinds.IsDefault)
+            {
+                var paramKindsBuilder = ArrayBuilder<ParamKind>.GetInstance(refKinds.Length);
+                foreach (RefKind refKind in refKinds)
+                {
+                    paramKindsBuilder.Add(RefKindToParamKind(refKind));
+                }
+                return paramKindsBuilder.ToImmutableAndFree();
+            }
+            return default(ImmutableArray<ParamKind>);
+        }
+
         private readonly ConversionsBase conversions;
         private readonly ImmutableArray<TypeParameterSymbol> methodTypeParameters;
         private readonly NamedTypeSymbol constructedContainingTypeOfMethod;
         private readonly ImmutableArray<TypeSymbol> formalParameterTypes;
-        private readonly ImmutableArray<RefKind> formalParameterRefKinds;
+        private readonly ImmutableArray<ParamKind> formalParameterKinds;
         private readonly ImmutableArray<TypeSymbol> argumentTypes;
         private readonly ImmutableArray<BoundExpression> arguments;
 
@@ -202,7 +242,6 @@ namespace Microsoft.CodeAnalysis.CSharp
             // the delegate.
 
             ImmutableArray<RefKind> formalParameterRefKinds, // Optional; assume all value if missing.
-            ImmutableArray<TypeSymbol> argumentTypes, // Required
             ImmutableArray<BoundExpression> arguments,// Required; in scenarios like method group conversions where there are
                                                       // no arguments per se we cons up some fake arguments.
             ref HashSet<DiagnosticInfo> useSiteDiagnostics
@@ -212,8 +251,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             Debug.Assert(methodTypeParameters.Length > 0);
             Debug.Assert(!formalParameterTypes.IsDefault);
             Debug.Assert(formalParameterRefKinds.IsDefault || formalParameterRefKinds.Length == formalParameterTypes.Length);
-            Debug.Assert(!argumentTypes.IsDefault);
-            Debug.Assert(!arguments.IsDefault && arguments.Length == argumentTypes.Length);
+            Debug.Assert(!arguments.IsDefault);
 
             // Early out: if the method has no formal parameters then we know that inference will fail.
             if (formalParameterTypes.Length == 0)
@@ -225,14 +263,57 @@ namespace Microsoft.CodeAnalysis.CSharp
                 // UNDONE: so then we know ahead of time that inference will fail.
             }
 
+            var argumentTypes = ArrayBuilder<TypeSymbol>.GetInstance();
+            for (int arg = 0; arg < arguments.Length; arg++)
+            {
+                argumentTypes.Add(arguments[arg].Type);
+            }
+
             var inferrer = new MethodTypeInferrer(
                 binder.Conversions,
                 methodTypeParameters,
                 constructedContainingTypeOfMethod,
                 formalParameterTypes,
-                formalParameterRefKinds,
-                argumentTypes,
+                RefKindToParamKindImmutableArray(formalParameterRefKinds),
+                argumentTypes.ToImmutableAndFree(),
                 arguments);
+            return inferrer.InferTypeArgs(binder, ref useSiteDiagnostics);
+        }
+
+        public static MethodTypeInferenceResult InferFromReturn(
+            Binder binder,
+            ImmutableArray<TypeParameterSymbol> methodTypeParameters,
+            NamedTypeSymbol constructedContainingTypeOfMethod,
+            TypeSymbol formalReturnType, // should be unconstructed as per comment on Infer() above
+            TypeSymbol returnArgumentType, // The type that the caller expects to get back 
+            ref HashSet<DiagnosticInfo> useSiteDiagnostics
+            )
+        {
+            Debug.Assert(!methodTypeParameters.IsDefault);
+            Debug.Assert(methodTypeParameters.Length > 0);
+            Debug.Assert((object)formalReturnType != null);
+            Debug.Assert((object)returnArgumentType != null);
+
+            var paramTypesBuilder = ArrayBuilder<TypeSymbol>.GetInstance();
+            paramTypesBuilder.Add(formalReturnType);
+
+            var paramKindsBuilder = ArrayBuilder<ParamKind>.GetInstance();
+            paramKindsBuilder.Add(ParamKind.OutValue);
+
+            var argsBuilder = ArrayBuilder<BoundExpression>.GetInstance();
+            argsBuilder.Add(null);
+
+            var argTypesBuilder = ArrayBuilder<TypeSymbol>.GetInstance();
+            argTypesBuilder.Add(returnArgumentType);
+
+            var inferrer = new MethodTypeInferrer(
+                binder.Conversions,
+                methodTypeParameters,
+                constructedContainingTypeOfMethod,
+                paramTypesBuilder.ToImmutableAndFree(),
+                paramKindsBuilder.ToImmutableAndFree(),
+                argTypesBuilder.ToImmutableAndFree(),
+                argsBuilder.ToImmutableAndFree());
             return inferrer.InferTypeArgs(binder, ref useSiteDiagnostics);
         }
 
@@ -250,7 +331,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             ImmutableArray<TypeParameterSymbol> methodTypeParameters,
             NamedTypeSymbol constructedContainingTypeOfMethod,
             ImmutableArray<TypeSymbol> formalParameterTypes,
-            ImmutableArray<RefKind> formalParameterRefKinds,
+            ImmutableArray<ParamKind> formalParameterKinds,
             ImmutableArray<TypeSymbol> argumentTypes,
             ImmutableArray<BoundExpression> arguments)
         {
@@ -258,7 +339,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             this.methodTypeParameters = methodTypeParameters;
             this.constructedContainingTypeOfMethod = constructedContainingTypeOfMethod;
             this.formalParameterTypes = formalParameterTypes;
-            this.formalParameterRefKinds = formalParameterRefKinds;
+            this.formalParameterKinds = formalParameterKinds;
             this.argumentTypes = argumentTypes;
             this.arguments = arguments;
             this.fixedResults = new TypeSymbol[methodTypeParameters.Length];
@@ -284,14 +365,18 @@ namespace Microsoft.CodeAnalysis.CSharp
                     sb.Append(", ");
                 }
 
-                var refKind = GetRefKind(i);
-                if (refKind == RefKind.Out)
+                var paramKind = GetParamKind(i);
+                if (paramKind == ParamKind.OutReference)
                 {
                     sb.Append("out ");
                 }
-                else if (refKind == RefKind.Ref)
+                else if (paramKind == ParamKind.InOutReference)
                 {
                     sb.Append("ref ");
+                }
+                else if (paramKind == ParamKind.OutValue)
+                {
+                    sb.Append("return ");
                 }
                 sb.Append(formalParameterTypes[i]);
             }
@@ -359,10 +444,10 @@ namespace Microsoft.CodeAnalysis.CSharp
 
 #endif
 
-        private RefKind GetRefKind(int index)
+        private ParamKind GetParamKind(int index)
         {
             Debug.Assert(0 <= index && index < formalParameterTypes.Length);
-            return formalParameterRefKinds.IsDefault ? RefKind.None : formalParameterRefKinds[index];
+            return formalParameterKinds.IsDefault ? ParamKind.InValue : formalParameterKinds[index];
         }
 
         private ImmutableArray<TypeSymbol> GetResults()
@@ -541,10 +626,10 @@ namespace Microsoft.CodeAnalysis.CSharp
             {
                 var argument = arguments[arg];
 
-                bool isOutOrRef = GetRefKind(arg) != RefKind.None;
+                ParamKind paramKind = GetParamKind(arg);
 
                 TypeSymbol target = formalParameterTypes[arg];
-                TypeSymbol source = arguments[arg].Type;
+                TypeSymbol source = argumentTypes[arg];
 
 
                 // If the argument is a TYPEORNAMESPACEERROR and the pSource is an
@@ -587,15 +672,19 @@ namespace Microsoft.CodeAnalysis.CSharp
 
                 // SPEC: * Otherwise, no inference is made for this argument
 
-                if (argument.Kind == BoundKind.UnboundLambda)
+                if ((object)argument != null && argument.Kind == BoundKind.UnboundLambda)
                 {
                     ExplicitParameterTypeInference(argument, target, ref useSiteDiagnostics);
                 }
                 else if (IsReallyAType(source))
                 {
-                    if (isOutOrRef)
+                    if (paramKind == ParamKind.InOutReference || paramKind == ParamKind.OutReference)
                     {
                         ExactInference(source, target, ref useSiteDiagnostics);
+                    }
+                    else if (paramKind == ParamKind.OutValue)
+                    {
+                        UpperBoundInference(source, target, ref useSiteDiagnostics);
                     }
                     else
                     {
@@ -720,6 +809,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 var argument = arguments[arg];
                 if (HasUnfixedParamInOutputType(argument, formalType) && !HasUnfixedParamInInputType(argument, formalType))
                 {
+                    Debug.Assert((object)argument != null);
                     var argumentType = argumentTypes[arg];
                     //UNDONE: if (argument->isTYPEORNAMESPACEERROR() && argumentType->IsErrorType())
                     //UNDONE: {
@@ -814,6 +904,11 @@ namespace Microsoft.CodeAnalysis.CSharp
             // SPEC: type or expression tree type then all the parameter types of T are
             // SPEC: input types of E with type T.
 
+            if ((object)argument == null)
+            {
+                return false; // No input types.
+            }
+
             var delegateType = formalParameterType.GetDelegateType();
             if ((object)delegateType == null)
             {
@@ -867,6 +962,11 @@ namespace Microsoft.CodeAnalysis.CSharp
             // SPEC: If E is a method group or an anonymous function and T is a delegate
             // SPEC: type or expression tree type then the return type of T is an output type
             // SPEC: of E with type T.
+
+            if ((object)argument == null)
+            {
+                return false;
+            }
 
             var delegateType = formalParameterType.GetDelegateType();
             if ((object)delegateType == null)
@@ -2507,7 +2607,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                 constructedFromMethod.TypeParameters,
                 constructedFromMethod.ContainingType,
                 constructedFromMethod.GetParameterTypes(),
-                constructedFromMethod.ParameterRefKinds,
+                RefKindToParamKindImmutableArray(constructedFromMethod.ParameterRefKinds),
                 argumentTypes,
                 arguments);
 
@@ -2528,7 +2628,7 @@ namespace Microsoft.CodeAnalysis.CSharp
             Debug.Assert(!arguments.IsDefault);
             Debug.Assert(arguments.Length >= 1);
             TypeSymbol dest = formalParameterTypes[0];
-            TypeSymbol source = arguments[0].Type;
+            TypeSymbol source = argumentTypes[0];
             // Rule out lambdas, nulls, and so on.
             if (!IsReallyAType(source))
             {
