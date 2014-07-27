@@ -6226,6 +6226,15 @@ namespace Microsoft.CodeAnalysis.CSharp {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The feature being used here isn&apos;t quite ready..
+        /// </summary>
+        internal static string ERR_NotImplementedYet {
+            get {
+                return ResourceManager.GetString("ERR_NotImplementedYet", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to &apos;{0}&apos; is of type &apos;{1}&apos;. A const field of a reference type other than string can only be initialized with null..
         /// </summary>
         internal static string ERR_NotNullConstRefField {

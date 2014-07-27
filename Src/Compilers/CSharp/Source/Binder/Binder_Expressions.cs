@@ -2382,22 +2382,84 @@ namespace Microsoft.CodeAnalysis.CSharp
                                 case SymbolKind.Local:
                                     {
                                         var localSymbol = (LocalSymbol)implicitArgumentSymbol;
-                                        boundImplicitArgument = new BoundLocal(expression, localSymbol, constantValueOpt: null, type: localSymbol.Type);
+                                        boundImplicitArgument = new BoundLocal(node, localSymbol, constantValueOpt: null, type: localSymbol.Type);
                                     }
                                     break;
 
                                 case SymbolKind.Parameter:
                                     {
                                         var parameterSymbol = (ParameterSymbol)implicitArgumentSymbol;
-                                        boundImplicitArgument = new BoundParameter(expression, parameterSymbol);
+                                        boundImplicitArgument = new BoundParameter(node, parameterSymbol);
                                     }
                                     break;
 
                                 case SymbolKind.Field:
                                     {
                                         var fieldSymbol = (FieldSymbol)implicitArgumentSymbol;
-                                        BoundExpression implicitArgumentReceiver = SynthesizeReceiver(expression, fieldSymbol, diagnostics);
-                                        boundImplicitArgument = BindFieldAccess(expression, implicitArgumentReceiver, fieldSymbol, diagnostics, LookupResultKind.Viable, hasErrors: false);
+                                        BoundExpression implicitArgumentReceiver = SynthesizeReceiver(node, fieldSymbol, diagnostics);
+                                        boundImplicitArgument = BindFieldAccess(node, implicitArgumentReceiver, fieldSymbol, diagnostics, LookupResultKind.Viable, hasErrors: false);
+                                    }
+                                    break;
+
+                                case SymbolKind.Method:
+                                    {
+                                        var methodSymbol = (MethodSymbol)implicitArgumentSymbol;
+                                        BoundExpression implicitArgumentReceiver = SynthesizeReceiver(node, methodSymbol, diagnostics);
+                                        BoundMethodGroupFlags flags = BoundMethodGroupFlags.None;
+                                        if (implicitArgumentReceiver != null)
+                                        {
+                                            flags |= BoundMethodGroupFlags.HasImplicitReceiver;
+                                        }
+                                        // TODO: should get this back from lookup rather than repeating the inference
+                                        MethodTypeInferenceResult inferenceResult = MethodTypeInferrer.InferFromReturn(
+                                            this,
+                                            methodSymbol.TypeParameters,
+                                            methodSymbol.ContainingType,
+                                            methodSymbol.ReturnType,
+                                            implicitParamType,
+                                            ref useSiteDiagnostics);
+                                        Debug.Assert(inferenceResult.Success, "Type inference was successful in lookup, but failed here");
+
+                                        var boundMethodGroup = new BoundMethodGroup(
+                                            node,
+                                            inferenceResult.InferredTypeArguments,
+                                            implicitArgumentReceiver,
+                                            methodSymbol.Name,
+                                            ImmutableArray.Create(methodSymbol),
+                                            implicitParamLookupResult,
+                                            flags,
+                                            hasErrors: false);
+                                        boundMethodGroup.WasCompilerGenerated = true;
+                                        var emptyAnalyzedArgs = AnalyzedArguments.GetInstance();
+                                        boundImplicitArgument = BindMethodGroupInvocation(
+                                            node,
+                                            node, // TODO: is this going to cause problems?
+                                            methodSymbol.Name,
+                                            boundMethodGroup,
+                                            emptyAnalyzedArgs,
+                                            diagnostics,
+                                            queryClause: null
+                                            );
+                                        boundImplicitArgument.WasCompilerGenerated = true;
+                                        emptyAnalyzedArgs.Free();
+                                    }
+                                    break;
+
+                                case SymbolKind.Property:
+                                    {
+                                        boundImplicitArgument = new BoundBadExpression(
+                                            node,
+                                            implicitParamLookupResult.Kind,
+                                            implicitParamLookupResult.Symbols.ToImmutableArray(),
+                                            ImmutableArray<BoundNode>.Empty,
+                                            implicitParamType,
+                                            hasErrors: true);
+                                        boundImplicitArgument.WasCompilerGenerated = true;
+                                        Error(
+                                            diagnostics,
+                                            ErrorCode.ERR_NotImplementedYet,
+                                            node);
+                                        gotError = true;
                                     }
                                     break;
 
@@ -2411,7 +2473,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                         else if (implicitParamLookupResult.IsMultiViable || !parameter.HasExplicitDefaultValue)
                         {
                             boundImplicitArgument = new BoundBadExpression(
-                                expression,
+                                node,
                                 implicitParamLookupResult.Kind,
                                 implicitParamLookupResult.Symbols.ToImmutableArray(),
                                 ImmutableArray<BoundNode>.Empty,
@@ -2423,7 +2485,7 @@ namespace Microsoft.CodeAnalysis.CSharp
                                 implicitParamLookupResult.IsMultiViable
                                     ? ErrorCode.ERR_AmbiguousImplicitParameterArgument
                                     : ErrorCode.ERR_NoSuitableImplicitArgumentInScope,
-                                expression,
+                                node,
                                 parameter.Name,
                                 methodName);
                             gotError = true;

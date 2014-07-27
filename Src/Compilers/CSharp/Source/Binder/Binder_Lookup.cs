@@ -1705,15 +1705,60 @@ namespace Microsoft.CodeAnalysis.CSharp
         protected static void LookupImplicitMembersWithoutInheritance(LookupResult result, TypeSymbol type, TypeSymbol targetType,
             LookupOptions options, Binder originalBinder, TypeSymbol accessThroughType, bool diagnose, ref HashSet<DiagnosticInfo> useSiteDiagnostics, ConsList<Symbol> basesBeingResolved = null)
         {
-            var members = type.GetMembersUnordered();
+            if (type.Kind != SymbolKind.NamedType)
+            {
+                // Only examine members of named types (e.g. classes)
+                return;
+            }
+
+            var namedType = (NamedTypeSymbol)type;
+            ImmutableArray<Symbol> members = type.GetMembersUnordered();
 
             foreach (Symbol member in members)
             {
                 if (member.IsImplicit)
                 {
                     TypeSymbol memberType = member.GetTypeOrReturnType();
-                    Conversions conversions = originalBinder.Conversions;
-                    bool typeMatches = conversions.HasConversionForImplicitParameter(memberType, targetType, ref useSiteDiagnostics);
+
+                    bool typeMatches;
+                    switch (member.Kind)
+                    {
+                        case SymbolKind.Field:
+                        case SymbolKind.Property:
+                            {
+                                Conversions conversions = originalBinder.Conversions;
+                                typeMatches = conversions.HasConversionForImplicitParameter(memberType, targetType, ref useSiteDiagnostics);
+                            }
+                            break;
+
+                        case SymbolKind.Method:
+                            {
+                                var methodSymbol = (MethodSymbol)member;
+                                MethodTypeInferenceResult inferenceResult = MethodTypeInferrer.InferFromReturn(
+                                    originalBinder, 
+                                    methodSymbol.TypeParameters, 
+                                    namedType, 
+                                    methodSymbol.ReturnType, 
+                                    targetType, 
+                                    ref useSiteDiagnostics);
+
+                                if (inferenceResult.Success)
+                                {
+                                    typeMatches = true;
+                                }
+                                else
+                                {
+                                    typeMatches = false;
+                                }
+                            }
+                            break;
+
+                        default:
+                            // implicit modifier isn't allowed on other kinds of member symbol, so ignore any
+                            // that have somehow acquired it.
+                            typeMatches = false;
+                            break;
+                    }
 
                     if (typeMatches)
                     {

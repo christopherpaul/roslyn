@@ -760,7 +760,8 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
                         DeclarationModifiers.Abstract |
                         DeclarationModifiers.Static |
                         DeclarationModifiers.Virtual |
-                        DeclarationModifiers.Override;
+                        DeclarationModifiers.Override |
+                        DeclarationModifiers.Implicit;
                 }
             }
 

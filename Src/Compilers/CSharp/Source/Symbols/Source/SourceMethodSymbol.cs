@@ -500,6 +500,14 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
             }
         }
 
+        internal override bool IsImplicit
+        {
+            get
+            {
+                return (this.DeclarationModifiers & DeclarationModifiers.Implicit) != 0;
+            }
+        }
+
         internal sealed override Microsoft.Cci.CallingConvention CallingConvention
         {
             get

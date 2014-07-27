@@ -3834,4 +3834,7 @@
   <data name="ERR_NoSuitableImplicitArgumentInScope" xml:space="preserve">
     <value>The implicit parameter '{0}' of method '{1}' cannot be resolved, because there is no implicit symbol in scope with a suitable type.</value>
   </data>
+  <data name="ERR_NotImplementedYet" xml:space="preserve">
+    <value>The feature being used here isn't quite ready.</value>
+  </data>
 </root>

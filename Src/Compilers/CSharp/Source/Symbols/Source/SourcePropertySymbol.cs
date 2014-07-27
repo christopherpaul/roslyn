@@ -604,7 +604,7 @@ namespace Microsoft.CodeAnalysis.CSharp.Symbols
 
                     if (!isIndexer)
                     {
-                        allowedModifiers |= DeclarationModifiers.Static;
+                        allowedModifiers |= DeclarationModifiers.Static | DeclarationModifiers.Implicit;
                     }
                 }
             }
