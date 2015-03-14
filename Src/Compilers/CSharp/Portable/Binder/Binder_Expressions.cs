@@ -422,6 +422,8 @@ namespace Microsoft.CodeAnalysis.CSharp
                 case SyntaxKind.SimpleMemberAccessExpression:
                 case SyntaxKind.PointerMemberAccessExpression:
                     return BindMemberAccess((MemberAccessExpressionSyntax)node, invoked, indexed, diagnostics: diagnostics);
+                case SyntaxKind.PipeExpression:
+                    return BindPipeExpression((PipeExpressionSyntax)node, diagnostics);
                 case SyntaxKind.SimpleAssignmentExpression:
                     return BindAssignment((AssignmentExpressionSyntax)node, diagnostics);
                 case SyntaxKind.CastExpression:
@@ -4566,6 +4568,120 @@ namespace Microsoft.CodeAnalysis.CSharp
                 lookupResult.Free();
             }
         }
+
+        /// <summary>
+        /// Binds a pipe expression: x.(f)
+        /// </summary>
+        private BoundExpression BindPipeExpression(PipeExpressionSyntax node, DiagnosticBag diagnostics)
+        {
+            Debug.Assert(node != null);
+
+            BoundExpression boundLeft;
+            {
+                ExpressionSyntax leftExprSyntax = node.Expression;
+                HashSet<DiagnosticInfo> useSiteDiagnostics = null;
+                boundLeft = this.BindExpression(leftExprSyntax, diagnostics);
+                diagnostics.Add(node, useSiteDiagnostics);
+            }
+
+            //TODO: dynamic LHS?
+
+            boundLeft = MakeMemberAccessValue(boundLeft, diagnostics);
+
+            SyntaxToken operatorToken = node.DotToken;
+            TypeSymbol leftType = boundLeft.Type;
+
+            // No pipe on void
+            if ((object)leftType != null && leftType.SpecialType == SpecialType.System_Void)
+            {
+                DiagnosticInfo diagnosticInfo = new CSDiagnosticInfo(ErrorCode.ERR_BadUnaryOp, SyntaxFacts.GetText(operatorToken.CSharpKind()), leftType);
+                diagnostics.Add(new CSDiagnostic(diagnosticInfo, operatorToken.GetLocation()));
+                return BadExpression(node, boundLeft);
+            }
+
+            if (boundLeft.Kind == BoundKind.UnboundLambda)
+            {
+                Debug.Assert((object)leftType == null);
+
+                var msgId = ((UnboundLambda)boundLeft).MessageID;
+                DiagnosticInfo diagnosticInfo = new CSDiagnosticInfo(ErrorCode.ERR_BadUnaryOp, SyntaxFacts.GetText(operatorToken.CSharpKind()), msgId.Localize());
+                diagnostics.Add(new CSDiagnostic(diagnosticInfo, node.Location));
+                return BadExpression(node, boundLeft);
+            }
+
+            if (boundLeft.Kind == BoundKind.DefaultOperator && boundLeft.ConstantValue == ConstantValue.Null)
+            {
+                Error(diagnostics, ErrorCode.WRN_DotOnDefault, node, leftType);
+            }
+
+            BoundExpression boundRight;
+            {
+                ExpressionSyntax rightExprSyntax = node.FunctionExpression;
+                HashSet<DiagnosticInfo> useSiteDiagnostics = null;
+                boundRight = this.BindExpression(rightExprSyntax, diagnostics);
+                diagnostics.Add(node, useSiteDiagnostics);
+            }
+
+            TypeSymbol pipeExprType;
+            if (boundRight.Kind == BoundKind.UnboundLambda)
+            {
+                var unboundLambda = (UnboundLambda)boundRight;
+                if ((object)leftType != null)
+                {
+                    var func1WellKnownType = WellKnownTypes.GetWellKnownFunctionDelegate(1); // Func<T1,TResult>
+                    NamedTypeSymbol func1Type = Compilation.GetWellKnownType(func1WellKnownType);
+                    var constructedFunc1Type = new ConstructedNamedTypeSymbol(func1Type, ImmutableArray.Create(leftType, Compilation.ObjectType));
+
+                    HashSet<DiagnosticInfo> useSiteDiagnostics = null;
+                    var inferredReturnType = unboundLambda.InferReturnType(constructedFunc1Type, ref useSiteDiagnostics);
+                    if (inferredReturnType != null)
+                    {
+                        diagnostics.Add(node, useSiteDiagnostics);
+                        var delegateType = new ConstructedNamedTypeSymbol(func1Type, ImmutableArray.Create(leftType, inferredReturnType));
+                        boundRight = unboundLambda.Bind(delegateType);
+                        pipeExprType = inferredReturnType;
+                    }
+                    else
+                    {
+                        //TODO error stuff
+                        return BadExpression(node, boundRight);
+                    }
+                }
+                else
+                {
+                    //TODO error stuff
+                    return BadExpression(node, boundRight);
+                }
+            }
+            else
+            {
+                TypeSymbol rightType = boundRight.Type;
+                if ((object)rightType != null)
+                {
+                    NamedTypeSymbol delegateType = rightType.GetDelegateType();
+                    if ((object)delegateType != null)
+                    {
+                        //TODO check single parameter
+                        //TODO check parameter matches leftType
+                        //TODO do conversion of boundLeft to parameter type
+                        return BadExpression(node, boundRight);
+                    }
+                    else
+                    {
+                        //TODO error stuff
+                        return BadExpression(node, boundRight);
+                    }
+                }
+                else
+                {
+                    //TODO error stuff
+                    return BadExpression(node, boundRight);
+                }
+            }
+
+            return new BoundPipe(node, boundLeft, boundRight, pipeExprType, hasErrors: false); //TODO hasErrors
+        }
+
 
         /// <summary>
         /// Create a value from the expression that can be used as a left-hand-side

@@ -8590,7 +8590,19 @@ namespace Microsoft.CodeAnalysis.CSharp.Syntax.InternalSyntax
                         expr = syntaxFactory.MemberAccessExpression(SyntaxKind.PointerMemberAccessExpression, expr, this.EatToken(), this.ParseSimpleName(NameOptions.InExpression));
                         break;
                     case SyntaxKind.DotToken:
-                        expr = syntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, expr, this.EatToken(), this.ParseSimpleName(NameOptions.InExpression));
+                        if (this.PeekToken(1).Kind == SyntaxKind.OpenParenToken)
+                        {
+                            var openParen = this.EatToken(SyntaxKind.OpenParenToken);
+                            var expression = this.ParseSubExpression(0);
+                            var closeParen = this.EatToken(SyntaxKind.CloseParenToken);
+                            var functionExpr = syntaxFactory.ParenthesizedExpression(openParen, expression, closeParen);
+
+                            expr = syntaxFactory.PipeExpression(expr, this.EatToken(), functionExpr);
+                        }
+                        else
+                        {
+                            expr = syntaxFactory.MemberAccessExpression(SyntaxKind.SimpleMemberAccessExpression, expr, this.EatToken(), this.ParseSimpleName(NameOptions.InExpression));
+                        }
                         break;
 
                     case SyntaxKind.QuestionToken:

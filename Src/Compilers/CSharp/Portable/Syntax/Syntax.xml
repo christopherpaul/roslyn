@@ -389,6 +389,31 @@
       <summary>Creates an MemberAccessExpressionSyntax node.</summary>
     </FactoryComment>
   </Node>
+  <Node Name="PipeExpressionSyntax" Base="ExpressionSyntax">
+    <Kind Name="PipeExpression"/>
+    <Field Name="Expression" Type="ExpressionSyntax">
+      <PropertyComment>
+        <summary>ExpressionSyntax node representing the object being piped into a function.</summary>
+      </PropertyComment>
+    </Field>
+    <Field Name="DotToken" Type="SyntaxToken">
+      <Kind Name="DotToken"/>
+      <PropertyComment>
+        <summary>SyntaxToken representing the dot in the pipe expression.</summary>
+      </PropertyComment>
+    </Field>
+    <Field Name="FunctionExpression" Type="ExpressionSyntax">
+      <PropertyComment>
+        <summary>ExpressionSyntax node representing the function into which an object is being piped.</summary>
+      </PropertyComment>
+    </Field>
+    <TypeComment>
+      <summary>Class which represents the syntax node for pipe expression.</summary>
+    </TypeComment>
+    <FactoryComment>
+      <summary>Creates a PipeExpressionSyntax node.</summary>
+    </FactoryComment>
+  </Node>
   <Node Name="ConditionalAccessExpressionSyntax" Base="ExpressionSyntax">
     <Kind Name="ConditionalAccessExpression"/>
     <Field Name="Expression" Type="ExpressionSyntax">

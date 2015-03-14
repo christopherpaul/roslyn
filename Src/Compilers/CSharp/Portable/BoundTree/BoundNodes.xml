@@ -1302,5 +1302,11 @@
     <Field Name="Alignment" Type="BoundExpression" Null="allow"/>
     <Field Name="Format" Type="BoundExpression" Null="allow"/>
   </Node>
-  
+
+  <Node Name="BoundPipe" Base="BoundExpression">
+    <Field Name="Type" Type="TypeSymbol" Override="true" Null="disallow"/>
+    <Field Name="Object" Type="BoundExpression" Null="disallow"/>
+    <Field Name="Function" Type="BoundExpression" Null="disallow"/>
+  </Node>
+
 </Tree>
